@@ -35,6 +35,9 @@
 *.i*86
 *.x86_64
 *.hex
+odd_even_serial
+odd_even_openmp
+odd_even_mpi
 
 # Debug files
 *.dSYM/
