@@ -18,7 +18,7 @@ void print_array(int arr[], int n) {
     printf("\n");
 }
 
-void odd_even_sort_openmp(int arr[], int buffer[], int n, int num_processors, int rank) {
+double odd_even_sort_openmp(int arr[], int buffer[], int n, int num_processors, int rank) {
     MPI_Barrier(MPI_COMM_WORLD);
     double comm_time = 0.0;
     int size = n / num_processors;
@@ -56,6 +56,7 @@ void odd_even_sort_openmp(int arr[], int buffer[], int n, int num_processors, in
 
         comm_time += (comm_fim - comm_inicio);
     }
+    return comm_time;
 }
 
 
@@ -114,16 +115,20 @@ int main(int argc, char *argv[]) {
     }
     
     inicio = MPI_Wtime();
-    odd_even_sort_openmp(arr, buffer, n, num_processors, rank);
+    double comm_time = odd_even_sort_openmp(arr, buffer, n, num_processors, rank);
+    MPI_Barrier(MPI_COMM_WORLD);
     fim = MPI_Wtime();
 
     tempo_total = fim - inicio;
+    double global_comm_time, global_tempo_total;
+    MPI_Reduce(&comm_time, &global_comm_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&tempo_total, &global_tempo_total, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
 
     if (rank == 0) {
-        // printf("Tempo Total (max): %.6f s\n", total_time_global);
-        // printf("Tempo Comunicação (soma): %.6f s\n", comm_time_global);
-        // printf("Overhead (aprox): %.2f%%\n", (comm_time_global/total_time_global)*100);
-        printf("Tempo de execução serial: %.6f segundos\n", tempo_total);
+        printf("Tempo Total (max): %.6f s\n", global_tempo_total);
+        printf("Tempo Comunicação (soma): %.6f s\n", global_comm_time);
+        printf("Overhead (aprox): %.2f%%\n", (global_comm_time/global_tempo_total)*100);
         printf("Array está ordenado: %s\n", is_sorted(buffer, n) ? "Sim" : "Não");
 
         printf("Array Final: ");
