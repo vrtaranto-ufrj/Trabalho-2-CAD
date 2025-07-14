@@ -3,6 +3,8 @@
 #include <time.h>
 #include <mpi.h>
 #include <stdint.h>
+#include <string.h>
+#include <stdbool.h>
 
 
 void swap(int *a, int *b) {
@@ -18,44 +20,87 @@ void print_array(int arr[], int n) {
     printf("\n");
 }
 
-double odd_even_sort_openmp(int arr[], int buffer[], int n, int num_processors, int rank) {
-    MPI_Barrier(MPI_COMM_WORLD);
+int compare_ints(const void* a, const void* b) {
+    int arg1 = *(const int*)a;
+    int arg2 = *(const int*)b;
+    if (arg1 < arg2) return -1;
+    if (arg1 > arg2) return 1;
+    return 0;
+}
+
+double odd_even_sort_mpi(int arr[], int arr_global[], int n, int size, int num_processos, int rank) {
     double comm_time = 0.0;
-    int size = n / num_processors;
-    size += size % 2 != 0;
-    printf("size: %d\n", size);
+    int fronteira, trocas_globais;
+    bool swap_feito = false;
+
+    qsort(arr, size, sizeof(int), compare_ints);
 
     for (int phase = 0; phase < n; phase++) {
-        double comm_inicio = MPI_Wtime();
-        MPI_Scatter(&buffer[phase % 2 != 0], size, MPI_INT, arr, size, MPI_INT, 0, MPI_COMM_WORLD);
-        // MPI_Barrier(MPI_COMM_WORLD);
-        // printf("antes rank (%d): ", rank);
-        // print_array(arr, size);
-        // if (rank == 0) {
-        //     print_array(buffer, n);
-        // }
-        double comm_fim = MPI_Wtime();
+        swap_feito = false;
 
+        double comm_inicio = MPI_Wtime();
+        if (phase % 2 == 0) {
+            if (rank % 2 == 0 && rank != num_processos - 1) {
+                MPI_Sendrecv(&arr[size - 1], 1, MPI_INT, rank + 1, 0,
+                             &fronteira, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                if (arr[size - 1] > fronteira) {
+                    arr[size - 1] = fronteira;
+                    swap_feito = true;
+                }
+            } else if (rank % 2 != 0) {
+                MPI_Sendrecv(&arr[0], 1, MPI_INT, rank - 1, 0,
+                             &fronteira, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                if (arr[0] < fronteira) {
+                    arr[0] = fronteira;
+                    swap_feito = true;
+                }
+            }
+        } else {
+            if (rank % 2 != 0 && rank != num_processos - 1) {
+                MPI_Sendrecv(&arr[size - 1], 1, MPI_INT, rank + 1, 0,
+                             &fronteira, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                if (arr[size - 1] > fronteira) {
+                    arr[size - 1] = fronteira;
+                    swap_feito = true;
+                }
+            } else if (rank % 2 == 0 && rank != 0) {
+                MPI_Sendrecv(&arr[0], 1, MPI_INT, rank - 1, 0,
+                             &fronteira, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                if (arr[0] < fronteira) {
+                    arr[0] = fronteira;
+                    swap_feito = true;
+                }
+            }
+        }
+        double comm_fim = MPI_Wtime();
         comm_time += (comm_fim - comm_inicio);
 
-        for (int i = 1; i < size; i += 2) {
-            if (arr[i-1] > arr[i]) {
-                swap(&arr[i-1], &arr[i]);
+        if (swap_feito) {
+            // Reordena o array local após a troca usando insertion sort
+            for (int i = 1; i < size; i++) {
+                int key = arr[i];
+                int j = i - 1;
+                while (j >= 0 && arr[j] > key) {
+                    arr[j + 1] = arr[j];
+                    j--;
+                }
+                arr[j + 1] = key;
             }
         }
 
-        // printf("depois rank (%d): ", rank);
-        // print_array(arr, size);
-        comm_inicio = MPI_Wtime();
-        MPI_Gather(arr, size, MPI_INT, &buffer[phase % 2 != 0], size, MPI_INT, 0, MPI_COMM_WORLD);
-        comm_fim = MPI_Wtime();
-        // MPI_Barrier(MPI_COMM_WORLD);
-        // if (rank == 0) {
-        //     print_array(buffer, n);
-        // }
+        MPI_Allreduce(&swap_feito, &trocas_globais, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+        if (trocas_globais == 0) {
+            break; // Se não houve trocas, o array está ordenado
+        }
 
-        comm_time += (comm_fim - comm_inicio);
+        
     }
+    MPI_Gather(arr, size, MPI_INT, arr_global, size, MPI_INT, 0, MPI_COMM_WORLD);
+
     return comm_time;
 }
 
@@ -84,38 +129,37 @@ int main(int argc, char *argv[]) {
     }
 
     int n = atoi(argv[1]);
-    int *arr = malloc(n * sizeof(int) + sizeof(int));
-    int *buffer = NULL;
     double tempo_total, inicio, fim;
+
     MPI_Init(&argc, &argv);
     
-    int rank, num_processors;
+    int rank, num_processos;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &num_processors);
+    MPI_Comm_size(MPI_COMM_WORLD, &num_processos);
+    int size = n / num_processos;
+
+    int *arr = NULL;
+    int *arr_local = malloc(size * sizeof(int));
     
     if (rank == 0) {
-        int size = n / num_processors;
-        size += size % 2 != 0;
-
-        int padded_n = size * num_processors + 1;
-        buffer = malloc(padded_n * sizeof(int));
-        generate_random_array(buffer, n, 1000);
-        for (int i = 0; i < padded_n - n; i++) {
-            buffer[n + i] = INT32_MAX;
-        }
+        arr = malloc(n * sizeof(int));
+        generate_random_array(arr, n, 1000);
 
         printf("Array original: ");
         if (n <= 20) {
-            print_array(buffer, n);
+            print_array(arr, n);
         }
         else {
-            print_array(buffer, 20);
+            print_array(arr, 20);
             printf("(exibindo apenas os 20 primeiros elementos)\n");
         }
+
     }
+    MPI_Scatter(arr, size, MPI_INT, arr_local, size, MPI_INT, 0, MPI_COMM_WORLD);
+
     
     inicio = MPI_Wtime();
-    double comm_time = odd_even_sort_openmp(arr, buffer, n, num_processors, rank);
+    double comm_time = odd_even_sort_mpi(arr_local, arr, n, size, num_processos, rank);
     MPI_Barrier(MPI_COMM_WORLD);
     fim = MPI_Wtime();
 
@@ -129,19 +173,22 @@ int main(int argc, char *argv[]) {
         printf("Tempo Total (max): %.6f s\n", global_tempo_total);
         printf("Tempo Comunicação (soma): %.6f s\n", global_comm_time);
         printf("Overhead (aprox): %.2f%%\n", (global_comm_time/global_tempo_total)*100);
-        printf("Array está ordenado: %s\n", is_sorted(buffer, n) ? "Sim" : "Não");
+        printf("Array está ordenado: %s\n", is_sorted(arr, n) ? "Sim" : "Não");
 
         printf("Array Final: ");
         if (n <= 20) {
-            print_array(buffer, n);
+            print_array(arr, n);
         }
         else {
-            print_array(buffer, 20);
+            print_array(arr, 20);
             printf("(exibindo apenas os 20 primeiros elementos)\n");
         }
     }
 
-    free(arr);
+    if (rank == 0) {
+        free(arr);
+    }
+    free(arr_local);
     MPI_Finalize();
     return 0;
 }
