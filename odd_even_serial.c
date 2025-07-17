@@ -63,10 +63,10 @@ int main(int argc, char *argv[]) {
     int n = atoi(argv[1]);
     int *arr = malloc(n * sizeof(int));
     struct timeval inicio, fim;
-    double tempo_total;
+    double tempo_total = 0.0;
     
     // Gerar array aleatório
-    generate_random_array(arr, n, 1000);
+    // generate_random_array(arr, n, 1000);
     // printf("Array original: ");
     // if (n <= 20) {
     //     print_array(arr, n);
@@ -76,14 +76,20 @@ int main(int argc, char *argv[]) {
     //     printf("(exibindo apenas os 20 primeiros elementos)\n");
     // }
 
-    gettimeofday(&inicio, NULL);
-    odd_even_sort_serial(arr, n);
-    gettimeofday(&fim, NULL);
+    int rodadas = 3;
+    for (int i = 0; i < rodadas; i++) {
+        // Reset array for each round
+        generate_random_array(arr, n, 1000);
+        gettimeofday(&inicio, NULL);
+        odd_even_sort_serial(arr, n);
+        gettimeofday(&fim, NULL);
 
-    tempo_total = (double)(fim.tv_sec - inicio.tv_sec) +
-                  (double)(fim.tv_usec - inicio.tv_usec) / 1000000.0;
+    tempo_total += (double)(fim.tv_sec - inicio.tv_sec) +
+                   (double)(fim.tv_usec - inicio.tv_usec) / 1000000.0;
+    }
 
-    printf("Tempo de execução serial: %.6f segundos\n", tempo_total);
+    double media_tempos = tempo_total / rodadas;
+    printf("Tempo de execução serial: %.6f segundos\n", media_tempos);
 
     // printf("Array ordenado: ");
     // if (n <= 20) {

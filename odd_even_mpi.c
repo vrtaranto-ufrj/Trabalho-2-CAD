@@ -137,52 +137,46 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &num_processos);
     int size = n / num_processos;
+    double soma_comm_time = 0.0, soma_global_time = 0.0;
 
     int *arr = NULL;
     int *arr_local = malloc(size * sizeof(int));
-    
+
     if (rank == 0) {
         arr = malloc(n * sizeof(int));
-        generate_random_array(arr, n, 1000);
-
-        printf("Array original: ");
-        if (n <= 20) {
-            print_array(arr, n);
-        }
-        else {
-            print_array(arr, 20);
-            printf("(exibindo apenas os 20 primeiros elementos)\n");
-        }
-
     }
-    MPI_Scatter(arr, size, MPI_INT, arr_local, size, MPI_INT, 0, MPI_COMM_WORLD);
-
     
-    inicio = MPI_Wtime();
-    double comm_time = odd_even_sort_mpi(arr_local, arr, n, size, num_processos, rank);
-    MPI_Barrier(MPI_COMM_WORLD);
-    fim = MPI_Wtime();
+    int rodadas = 3; // Número de rodadas para média
+    for (int r = 0; r < rodadas; r++) {
+        if (rank == 0) {
+            generate_random_array(arr, n, 1000);
+        }
+        MPI_Scatter(arr, size, MPI_INT, arr_local, size, MPI_INT, 0, MPI_COMM_WORLD);
 
-    tempo_total = fim - inicio;
-    double global_comm_time, global_tempo_total;
-    MPI_Reduce(&comm_time, &global_comm_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-    MPI_Reduce(&tempo_total, &global_tempo_total, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+        
+        inicio = MPI_Wtime();
+        double comm_time = odd_even_sort_mpi(arr_local, arr, n, size, num_processos, rank);
+        MPI_Barrier(MPI_COMM_WORLD);
+        fim = MPI_Wtime();
+
+        tempo_total = fim - inicio;
+        double global_comm_time, global_tempo_total;
+        MPI_Reduce(&comm_time, &global_comm_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&tempo_total, &global_tempo_total, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
+        if (rank == 0) {
+            soma_comm_time += global_comm_time;
+            soma_global_time += global_tempo_total;
+        }
+    }
 
 
     if (rank == 0) {
-        printf("Tempo Total (max): %.6f s\n", global_tempo_total);
-        printf("Tempo Comunicação (soma): %.6f s\n", global_comm_time);
-        printf("Overhead (aprox): %.2f%%\n", (global_comm_time/global_tempo_total)*100);
+        printf("Tempo Total (max): %.6f s\n", soma_global_time);
+        printf("Tempo Comunicação (soma): %.6f s\n", soma_comm_time);
+        printf("Overhead (aprox): %.2f%%\n", (soma_comm_time/soma_global_time)*100);
+        printf("Eficiencia (aprox): %.2f%%\n", (soma_global_time - soma_comm_time)/soma_global_time * 100);
         printf("Array está ordenado: %s\n", is_sorted(arr, n) ? "Sim" : "Não");
-
-        printf("Array Final: ");
-        if (n <= 20) {
-            print_array(arr, n);
-        }
-        else {
-            print_array(arr, 20);
-            printf("(exibindo apenas os 20 primeiros elementos)\n");
-        }
     }
 
     if (rank == 0) {
