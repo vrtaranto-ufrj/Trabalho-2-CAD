@@ -38,6 +38,7 @@
 odd_even_serial
 odd_even_openmp
 odd_even_mpi
+qsort_serial
 
 # Debug files
 *.dSYM/

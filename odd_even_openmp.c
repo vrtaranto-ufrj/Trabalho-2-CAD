@@ -16,6 +16,7 @@ void odd_even_sort_openmp(int arr[], int n, int num_threads) {
     {
         for (phase = 0; phase < n;) {
             if (phase % 2 == 0) {
+                // Alterar o schedule para o que desejar, e depois compilar
                 #pragma omp for schedule(dynamic) private(i)
                 for (i = 1; i < n; i += 2) {
                     if (arr[i-1] > arr[i]) {
@@ -30,6 +31,7 @@ void odd_even_sort_openmp(int arr[], int n, int num_threads) {
                     }
                 }
             }
+            // Incrementa a fase de forma segura para apenas uma thread realizar a operação
             #pragma omp single
             {
                 phase++;
@@ -96,9 +98,9 @@ int main(int argc, char *argv[]) {
 
     media_tempos = soma_tempos / rodadas;
 
+    // Formata o tempo com separador de milhar e vírgula como separador decimal para ficar facil de copiar para o excel
     char tempo_str[64];
     snprintf(tempo_str, sizeof(tempo_str), "%'.6f", media_tempos);
-    // Substitui o ponto por vírgula
     for (char *p = tempo_str; *p; ++p) {
         if (*p == '.') {
             *p = ',';

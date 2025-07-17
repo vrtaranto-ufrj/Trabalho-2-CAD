@@ -33,6 +33,7 @@ double odd_even_sort_mpi(int arr[], int arr_global[], int n, int size, int num_p
     int fronteira, trocas_globais;
     bool swap_feito = false;
 
+    // Primeiramente rodamos o quicksort localmente para garantir que o array esteja ordenado antes de iniciar o algoritmo
     qsort(arr, size, sizeof(int), compare_ints);
 
     for (int phase = 0; phase < n; phase++) {
@@ -40,6 +41,7 @@ double odd_even_sort_mpi(int arr[], int arr_global[], int n, int size, int num_p
 
         double comm_inicio = MPI_Wtime();
         if (phase % 2 == 0) {
+            // Em rodadas pares, o processo de rank par troca seu ultimo elemento com primeiro elemento do processo seguinte
             if (rank % 2 == 0 && rank != num_processos - 1) {
                 MPI_Sendrecv(&arr[size - 1], 1, MPI_INT, rank + 1, 0,
                              &fronteira, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -57,6 +59,7 @@ double odd_even_sort_mpi(int arr[], int arr_global[], int n, int size, int num_p
                     swap_feito = true;
                 }
             }
+        // Já em rodadas ímpares, o processo de rank ímpar troca seu último elemento com o primeiro elemento do processo seguinte
         } else {
             if (rank % 2 != 0 && rank != num_processos - 1) {
                 MPI_Sendrecv(&arr[size - 1], 1, MPI_INT, rank + 1, 0,
@@ -79,8 +82,11 @@ double odd_even_sort_mpi(int arr[], int arr_global[], int n, int size, int num_p
         double comm_fim = MPI_Wtime();
         comm_time += (comm_fim - comm_inicio);
 
+        // Se houve troca, realizamos uma ordenação local para garantir que o array esteja ordenado
         if (swap_feito) {
-            // Reordena o array local após a troca usando insertion sort
+            // Como o array estava ordenado e agora houve uma troca, o array ficou "99%" ordenado, então podemos usar o insertion sort para ordenar rapidamente,
+            // pois o insertion sort é eficiente para arrays quase ordenados
+            // A complexidade do insertion sort é O(n^2) no pior caso, mas O(n) no melhor caso, que é o caso aqui, pois o array está quase ordenado
             for (int i = 1; i < size; i++) {
                 int key = arr[i];
                 int j = i - 1;
@@ -92,6 +98,7 @@ double odd_even_sort_mpi(int arr[], int arr_global[], int n, int size, int num_p
             }
         }
 
+        // Aqui checamos se houve trocas em todos os processos, e se não houve, o array está ordenado e podemos sair do loop
         MPI_Allreduce(&swap_feito, &trocas_globais, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
         if (trocas_globais == 0) {
             break; // Se não houve trocas, o array está ordenado
@@ -99,6 +106,7 @@ double odd_even_sort_mpi(int arr[], int arr_global[], int n, int size, int num_p
 
         
     }
+    // Unificamos os arrays locais em um array global no processo 0
     MPI_Gather(arr, size, MPI_INT, arr_global, size, MPI_INT, 0, MPI_COMM_WORLD);
 
     return comm_time;
@@ -151,6 +159,7 @@ int main(int argc, char *argv[]) {
         if (rank == 0) {
             generate_random_array(arr, n, 1000);
         }
+        // Distribui o array para todos os processos
         MPI_Scatter(arr, size, MPI_INT, arr_local, size, MPI_INT, 0, MPI_COMM_WORLD);
 
         
